@@ -214,6 +214,30 @@ Format: each ADR is numbered, dated, and ends with a status (`Accepted` / `Super
 
 ---
 
+## ADR-013 — Resume PDFs use private Blob storage with server-side signed access; never publicly accessible by URL
+
+**Date**: 2026-05-15
+**Status**: Accepted
+
+**Context**: resume-builder Chunk 4 introduced PDF resume uploads via `@vercel/blob`. The `resume-pdfs` store on Vercel was created as a **private** store (PDFs are user career documents — name, email, full work history, sometimes phone numbers and addresses — so a public, guessable, infinite-lifetime URL was never the right primitive). The Chunk 4 code accidentally called `put(key, file, { access: 'public' })` and handed the resulting URL straight to Claude's `document` source. That worked in dev but immediately failed in prod against the private store with `Vercel Blob: Cannot use public access on a private store`. The fix needs to (a) keep the store private and (b) get the PDF bytes into Claude without ever exposing a public URL.
+
+**Decision**: All resume PDFs live in private Blob storage. Server-side code authenticates to the store using the project's `BLOB_READ_WRITE_TOKEN` via the `@vercel/blob` SDK; nothing — including Claude — ever receives a public URL for a PDF.
+
+Concretely:
+- `src/lib/resumes/create.ts` uploads with `put(key, file, { access: 'private' })`.
+- `src/lib/ai/resume-importer/index.ts` fetches the PDF with `get(pdfUrl, { access: 'private' })` from the same SDK, reads the returned stream into bytes server-side, base64-encodes, and sends to Claude as `{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: <b64> } }`.
+- Mechanism is bearer-token auth via the SDK, not URL signing — `@vercel/blob` does not expose a presigned-URL primitive for private blobs (`getDownloadUrl()` only appends `?download` and does not sign). The end-state is functionally equivalent to signed access from the caller's perspective: the only path to the bytes is through code that holds the store token.
+- If we ever need a third party (e.g. a browser-side download) to fetch a PDF, the path is **server proxy**: a Server Action / Route Handler that auth-checks the request, fetches via the SDK, and streams the response. Never embed the blob URL in client HTML.
+
+**Consequences**:
+- User-uploaded PDFs are never publicly addressable. Removes a real PII-leak class.
+- Adds one server hop per Claude import call (server fetches bytes → base64 → ships to Claude). Latency-neutral for typical resume PDFs (<2 MB); memory cost is ~4/3× the file size during the base64 step. Acceptable; if a >10 MB PDF becomes a thing we'll revisit streaming.
+- Future blob types (uploaded job descriptions, generated tailored-resume PDFs, etc.) should default to `access: 'private'` and follow the same server-side fetch pattern. Public access is only correct for assets that are intentionally public *and* don't need revocation (CSS, marketing images, etc.).
+- Tests must mock `@vercel/blob`'s `get()` whenever they exercise the importer's PDF path. Pattern is established in `src/lib/ai/resume-importer/resume-importer.test.ts`.
+- Shipped in resume-builder commit `3d875cc` (2026-05-15).
+
+---
+
 ## Decision queue (open, awaiting ADRs)
 
 - Which domain for bjc-mcp-*?
@@ -226,3 +250,4 @@ Format: each ADR is numbered, dated, and ends with a status (`Accepted` / `Super
 ## Updates log
 
 - **2026-05-14**: File created with ADRs 001–012.
+- **2026-05-15**: Added ADR-013 (resume PDFs use private Blob access; no public URLs).
