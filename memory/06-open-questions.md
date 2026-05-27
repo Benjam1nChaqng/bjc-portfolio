@@ -57,6 +57,20 @@
   - Loom-native browser extension (medium effort, good quality)
 - **Tentative decision**: Loom browser extension on desktop. Owner records all 3 project Looms in one ~2-hour session.
 
+### Q12 — Migrate bjc-eval Google judge from `google.generativeai` to `google.genai`
+- **Context**: `swe_judge/judges/google.py` imports `google.generativeai`, which Google has end-of-lifed in favor of the new `google.genai` package. The judge currently emits a `FutureWarning` on every run; the deprecated SDK still works but will not get bug fixes.
+- **Why it's deferred from the schema-strip fix (commit `6139dd1`)**: Different risk envelope. The migration touches:
+  1. `pyproject.toml` dep swap (`google-generativeai>=0.8` → `google-genai>=…`)
+  2. Import line + `genai.configure(...)` → `genai.Client(api_key=…)`
+  3. Call shape: `GenerativeModel(...).generate_content(...)` → `client.models.generate_content(model=…, contents=…, config=…)`
+  4. Tool-declaration format may have changed between SDKs
+  5. Response shape: `candidates[0].content.parts[0].function_call` → likely different attribute paths
+  6. `tests/test_google_judge.py` mock targets (`google.generativeai.GenerativeModel` etc.) all need re-pointing
+- **Done when**: Google judge runs against the new SDK with no FutureWarning, schema-strip + mock tests still pass against new mock targets, and the κ run still produces real Gemini scores.
+- **Scope estimate**: ~2–3 hours including test rewrite.
+- **Priority**: Medium. Doesn't block v0.1 (current SDK still works), but should ship before the v0.1 README goes public — having "deprecated SDK" as a visible warning during a hiring-team demo is a bad look.
+- **Decision deadline**: before recording the bjc-eval Loom.
+
 ---
 
 ## Low priority (nice to have / parking lot)
@@ -110,3 +124,4 @@
 
 - **2026-05-14**: File created with Q1–Q10. No questions resolved yet.
 - **2026-05-27**: Added Q11 (Windows console UnicodeEncodeError on κ glyph in bjc-eval summary print).
+- **2026-05-27**: Added Q12 (deferred Google SDK migration from `google.generativeai` to `google.genai` after the schema-strip surgical fix).
