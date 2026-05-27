@@ -88,6 +88,16 @@
 - **Con**: Adds operational complexity. Out of v0.1 scope.
 - **Decision**: parking lot for v0.2
 
+### Q11 — Windows console UnicodeEncodeError on κ glyph in `swe-judge` summary
+- **Symptom**: `swe-judge run` crashes at the end of a successful run on Windows with `UnicodeEncodeError: 'charmap' codec can't encode character 'κ'` — the Greek kappa in the summary table cannot be encoded by cp1252 (the Windows console default).
+- **Workaround in use**: prefix every invocation with `PYTHONIOENCODING=utf-8 PYTHONUTF8=1`. The run succeeds and the DB is written either way (the crash is in the post-run summary print, not the scoring path).
+- **Real fix options**:
+  1. Initialize Rich's `Console(file=sys.stdout, force_terminal=True)` with an explicit UTF-8 stream
+  2. Swap `κ` → `kappa` in `_print_summary` (loses the math typography but eliminates the failure mode entirely)
+  3. Recommend `chcp 65001` in the README for Windows users (worst — pushes the workaround onto users)
+- **Priority**: Low. Workaround is one-line; doesn't block the run; doesn't affect demo/CI on macOS/Linux.
+- **Decision deadline**: before publishing bjc-eval v0.1 README (so Windows users don't hit it first try).
+
 ---
 
 ## Resolved (move to `03-decisions.md` as ADRs when promoted)
@@ -99,3 +109,4 @@
 ## Updates log
 
 - **2026-05-14**: File created with Q1–Q10. No questions resolved yet.
+- **2026-05-27**: Added Q11 (Windows console UnicodeEncodeError on κ glyph in bjc-eval summary print).
